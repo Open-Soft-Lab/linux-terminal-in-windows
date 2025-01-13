@@ -8,7 +8,7 @@ public static class AutoComplete
     // Список поддерживаемых команд
     private static readonly List<string> Commands = new List<string>
     {
-        "cd", "ls", "pwd", "cat", "mkdir", "rm", "cp", "mv", "exit", "grep"
+        "cd", "ls", "pwd", "cat", "mkdir", "rm", "cp", "mv", "exit", "grep", "clear", "touch", "echo", "find", "wc", "ps", "kill"
     };
 
     /// <summary>
