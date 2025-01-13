@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -23,7 +23,7 @@ class EnhancedLinuxLikeCmd
             if (string.IsNullOrWhiteSpace(input))
                 continue;
 
-            commandHistory.Add(input);
+            commandHistory.Add(input); // Добавляем команду в историю
             historyIndex = commandHistory.Count;
 
             ExecuteCommand(input, ref currentDirectory);
@@ -118,19 +118,22 @@ class EnhancedLinuxLikeCmd
             string cmd = parts[0].ToLower();
             string args = parts.Length > 1 ? string.Join(" ", parts.Skip(1)) : "";
 
-            // Обработка переключения дисков (например, "C:" или "D:")
-            if (cmd.EndsWith(":"))
+            // Обработка команды history
+            if (cmd == "history")
             {
-                ChangeDrive(cmd, ref currentDirectory); // Передаём currentDirectory по ссылке
+                ShowHistory();
                 return null;
             }
 
-            // Обработка перенаправления вывода
-            if (args.Contains(">") || args.Contains(">>"))
+            // Обработка команды help
+            if (cmd == "help")
             {
-                return HandleOutputRedirection(cmd, args, currentDirectory, input);
+                string helpText = ExecuteHelp();
+                Logger.Info(helpText); // Выводим текст помощи в консоль
+                return helpText;
             }
 
+            // Остальные команды...
             string? result = null;
 
             switch (cmd)
@@ -162,6 +165,27 @@ class EnhancedLinuxLikeCmd
                 case "grep":
                     result = ExecuteGrep(args, input ?? "");
                     break;
+                case "clear":
+                    Console.Clear();
+                    break;
+                case "touch":
+                    CreateFile(args);
+                    break;
+                case "echo":
+                    result = ExecuteEcho(args);
+                    break;
+                case "find":
+                    result = ExecuteFind(args, currentDirectory);
+                    break;
+                case "wc":
+                    result = ExecuteWordCount(args);
+                    break;
+                case "ps":
+                    result = ExecuteProcessList();
+                    break;
+                case "kill":
+                    ExecuteKill(args);
+                    break;
                 case "exit":
                     Logger.Info("Завершение работы.");
                     Environment.Exit(0);
@@ -183,6 +207,15 @@ class EnhancedLinuxLikeCmd
         {
             Logger.Error($"Ошибка выполнения команды '{command}': {ex.Message}");
             return null;
+        }
+    }
+
+    static void ShowHistory()
+    {
+        Logger.Info("История команд:");
+        for (int i = 0; i < commandHistory.Count; i++)
+        {
+            Logger.Info($"{i + 1}: {commandHistory[i]}");
         }
     }
 
@@ -495,6 +528,34 @@ class EnhancedLinuxLikeCmd
         }
     }
 
+    static string ExecuteHelp()
+    {
+        string helpText = @"
+Доступные команды:
+- cd <путь>         : Сменить текущую директорию.
+- ls [-l]           : Вывести список файлов и директорий. -l для подробного вывода.
+- pwd               : Вывести текущую директорию.
+- cat <файл>        : Вывести содержимое файла.
+- mkdir <директория>: Создать директорию.
+- rm <путь>         : Удалить файл или директорию.
+- cp <источник> <назначение>: Копировать файл или директорию.
+- mv <источник> <назначение>: Переместить файл или директорию.
+- grep <шаблон>     : Поиск по шаблону в тексте.
+- clear             : Очистить консоль.
+- touch <файл>      : Создать пустой файл.
+- echo <текст>      : Вывести текст в консоль.
+- find <шаблон>     : Поиск файлов и директорий по имени.
+- wc <файл>         : Подсчёт строк, слов и символов в файле.
+- ps                : Вывод списка запущенных процессов.
+- kill <ID>         : Завершение процесса по ID.
+- history           : Показать историю команд.
+- help              : Показать список доступных команд.
+- exit              : Завершить работу.
+";
+
+        return helpText;
+    }
+
     static string? ExecuteExternalCommand(string command, string arguments, string workingDirectory, string? input = null)
     {
         try
@@ -534,6 +595,125 @@ class EnhancedLinuxLikeCmd
         {
             Logger.Error($"{command}: {ex.Message}");
             return null;
+        }
+    }
+
+    static void CreateFile(string filePath)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(filePath))
+            {
+                Logger.Error("touch: Не указан путь к файлу.");
+                return;
+            }
+
+            if (!File.Exists(filePath))
+            {
+                File.Create(filePath).Close();
+                Logger.Info($"Файл '{filePath}' создан.");
+            }
+            else
+            {
+                Logger.Info($"Файл '{filePath}' уже существует.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"touch: {ex.Message}");
+        }
+    }
+
+    static string? ExecuteEcho(string args)
+    {
+        return args;
+    }
+
+    static string? ExecuteFind(string args, string currentDirectory)
+    {
+        try
+        {
+            string[] parts = args.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 1)
+            {
+                Logger.Error("find: Не указан шаблон поиска.");
+                return null;
+            }
+
+            string pattern = parts[0];
+            string searchPath = parts.Length > 1 ? parts[1] : currentDirectory;
+
+            var files = Directory.GetFiles(searchPath, pattern, SearchOption.AllDirectories);
+            var directories = Directory.GetDirectories(searchPath, pattern, SearchOption.AllDirectories);
+
+            return string.Join(Environment.NewLine, files.Concat(directories));
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"find: {ex.Message}");
+            return null;
+        }
+    }
+
+    static string? ExecuteWordCount(string filePath)
+    {
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                string content = File.ReadAllText(filePath);
+                int lines = content.Split('\n').Length;
+                int words = content.Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+                int chars = content.Length;
+
+                return $"Lines: {lines}, Words: {words}, Characters: {chars}";
+            }
+            else
+            {
+                Logger.Error($"wc: {filePath}: Файл не найден.");
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"wc: {ex.Message}");
+            return null;
+        }
+    }
+
+    static string? ExecuteProcessList()
+    {
+        try
+        {
+            var processes = Process.GetProcesses();
+            var processList = processes.Select(p => $"{p.ProcessName} (ID: {p.Id})").ToList();
+            return string.Join(Environment.NewLine, processList);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"ps: {ex.Message}");
+            return null;
+        }
+    }
+
+    static void ExecuteKill(string args)
+    {
+        try
+        {
+            if (int.TryParse(args, out int processId))
+            {
+                Process process = Process.GetProcessById(processId);
+                process.Kill();
+                Logger.Info($"Процесс с ID {processId} завершён.");
+            }
+            else
+            {
+                Logger.Error("kill: Неверный ID процесса.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"kill: {ex.Message}");
         }
     }
 }
